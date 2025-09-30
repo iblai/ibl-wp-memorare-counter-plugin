@@ -1,8 +1,8 @@
 # IBLmemorare Counter
 
-**Version:** 0.4 (Prerelease - Testing Phase)  
+**Version:** 1.0-beta  
 **Author:** ibl.ai  
-**Description:** Post visit counter with strict security measures for WordPress. Fully compatible with WordPress Multisite.
+**Description:** Post visit counter for WordPress. Fully compatible with WordPress Multisite.
 
 > ⚠️ **PRERELEASE NOTICE**: This plugin is currently in testing phase. While it's functional, it's still being refined and may have minor issues. Use with caution in production environments.
 
@@ -11,6 +11,7 @@
 - Counts visits for each post.
 - **Full WordPress Multisite compatibility** - Works seamlessly across multiple sites.
 - REST API endpoint with nonce verification for secure counting.
+- **NEW: Most Read Posts API** - `/wp-json/iblmemorare/v1/posts/ibl-mostread` endpoint to get posts ordered by views.
 - Bot detection to prevent fake views.
 - Rate limiting by IP to prevent multiple counts in a short period.
 - Cookie-based prevention of repeated counts from the same user.
@@ -25,7 +26,7 @@
 
 ## ⚠️ Prerelease Status
 
-**Current Status**: Testing Phase (v0.4)
+**Current Status**: Beta Release (v1.0-beta)
 
 - ✅ **Core functionality working**: Visit counting, admin columns, REST API
 - ✅ **Multisite compatible**: Tested with WordPress Multisite
@@ -74,6 +75,49 @@ If you prefer to create the ZIP manually:
 - **Admin Column:** Visit the 'Posts' page to see the 'Views' column.
 - **Shortcode:** `[iblmemorare_counter]` anywhere in post content.
 - **Automatic Append:** Views are automatically displayed at the end of each post.
+- **Most Read Posts API:** Use the REST API endpoint to get posts ordered by views.
+
+### API Endpoint Usage
+
+**Get most read posts:**
+```
+GET /wp-json/iblmemorare/v1/posts/ibl-mostread
+```
+
+**Parameters:**
+- `limit` (optional): Number of posts to return (default: 10, max: 100)
+- `days` (optional): Number of days to look back (default: 30, max: 365)
+- `post_type` (optional): Post type to query (default: 'post')
+- `category` (optional): Category ID to filter posts (default: all categories)
+
+**Examples:**
+```
+/wp-json/iblmemorare/v1/posts/ibl-mostread?limit=5&days=7
+/wp-json/iblmemorare/v1/posts/ibl-mostread?limit=10&category=5
+/wp-json/iblmemorare/v1/posts/ibl-mostread?limit=5&days=7&category=3
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 123,
+      "title": "Post Title",
+      "excerpt": "Post excerpt...",
+      "date": "2024-01-01",
+      "url": "https://site.com/post",
+      "views": 150,
+      "thumbnail": "https://site.com/wp-content/uploads/image.jpg"
+    }
+  ],
+  "total": 5,
+  "limit": 5,
+  "days": 7,
+  "category": 3
+}
+```
 
 ## Languages / Translation
 
@@ -88,6 +132,10 @@ If you prefer to create the ZIP manually:
 - Cookie mechanism to prevent repeated counts.
 - Escaping all output for admin and frontend display.
 
+
+## About ibl.ai
+
+[ibl.ai](https://ibl.ai) builds AI-driven, revenue-generating systems for the educational sector, serving learners from over 400 universities.
 
 ## License
 

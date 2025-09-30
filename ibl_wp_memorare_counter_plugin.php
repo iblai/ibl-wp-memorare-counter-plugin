@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: IBL WP Memorare Counter
- * Description: Post visit counter with strict security measures.
- * Version: 0.4
+ * Description: Post visit counter for WordPress.
+ * Version: 1.0-beta
  * Author: ibl.ai
  * Text Domain: ibl-wp-memorare-counter
  */
@@ -98,6 +98,30 @@ final class IBL_WP_Memorare_Counter {
             'callback' => array($this, 'rest_track_view'),
             'permission_callback' => '__return_true',
         ));
+        
+        register_rest_route('iblmemorare/v1', '/posts/ibl-mostread', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'rest_get_mostread_posts'),
+            'permission_callback' => '__return_true',
+            'args' => array(
+                'limit' => array(
+                    'default' => 10,
+                    'sanitize_callback' => 'absint',
+                ),
+                'days' => array(
+                    'default' => 30,
+                    'sanitize_callback' => 'absint',
+                ),
+                'post_type' => array(
+                    'default' => 'post',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'category' => array(
+                    'default' => '',
+                    'sanitize_callback' => 'absint',
+                ),
+            ),
+        ));
     }
 
     public function rest_track_view($request) {
@@ -145,6 +169,157 @@ final class IBL_WP_Memorare_Counter {
         set_transient($transient_key, 1, 30 * MINUTE_IN_SECONDS);
 
         return new WP_REST_Response(array('success' => true, 'views' => $views), 200);
+    }
+
+    public function rest_get_mostread_posts($request) {
+        $limit = $request->get_param('limit');
+        $days = $request->get_param('days');
+        $post_type = $request->get_param('post_type');
+        $category = $request->get_param('category');
+        
+        // Validate parameters
+        if ($limit < 1 || $limit > 100) {
+            $limit = 10;
+        }
+        
+        if ($days < 1 || $days > 365) {
+            $days = 30;
+        }
+        
+        // Calculate date range
+        $date_from = date('Y-m-d H:i:s', strtotime("-{$days} days"));
+        
+        // Query for most read posts - first get posts with views
+        $args_with_views = array(
+            'post_type' => $post_type,
+            'post_status' => 'publish',
+            'posts_per_page' => $limit,
+            'meta_key' => $this->meta_key,
+            'orderby' => 'meta_value_num',
+            'order' => 'DESC',
+            'date_query' => array(
+                array(
+                    'after' => $date_from,
+                    'inclusive' => true,
+                ),
+            ),
+            'meta_query' => array(
+                array(
+                    'key' => $this->meta_key,
+                    'value' => 0,
+                    'compare' => '>',
+                ),
+            ),
+        );
+        
+        // Add category filter if specified
+        if (!empty($category) && $category > 0) {
+            $args_with_views['cat'] = $category;
+        }
+        
+        $query_with_views = new WP_Query($args_with_views);
+        $posts_with_views = array();
+        $post_ids_with_views = array();
+        
+        if ($query_with_views->have_posts()) {
+            while ($query_with_views->have_posts()) {
+                $query_with_views->the_post();
+                $post_id = get_the_ID();
+                $post_ids_with_views[] = $post_id;
+                $views = intval(get_post_meta($post_id, $this->meta_key, true));
+                
+                $thumbnail_id = get_post_thumbnail_id($post_id);
+                $thumbnail_url = '';
+                if ($thumbnail_id) {
+                    $thumbnail_url = wp_get_attachment_image_url($thumbnail_id, 'medium');
+                }
+                
+                $posts_with_views[] = array(
+                    'id' => $post_id,
+                    'title' => get_the_title(),
+                    'excerpt' => get_the_excerpt(),
+                    'date' => get_the_date('Y-m-d'),
+                    'url' => get_permalink(),
+                    'views' => $views,
+                    'thumbnail' => $thumbnail_url,
+                );
+            }
+            wp_reset_postdata();
+        }
+        
+        // If we need more posts, get posts without views
+        $remaining_limit = $limit - count($posts_with_views);
+        $posts_without_views = array();
+        
+        if ($remaining_limit > 0) {
+            $args_without_views = array(
+                'post_type' => $post_type,
+                'post_status' => 'publish',
+                'posts_per_page' => $remaining_limit,
+                'orderby' => 'date',
+                'order' => 'DESC',
+                'date_query' => array(
+                    array(
+                        'after' => $date_from,
+                        'inclusive' => true,
+                    ),
+                ),
+                'meta_query' => array(
+                    array(
+                        'key' => $this->meta_key,
+                        'compare' => 'NOT EXISTS',
+                    ),
+                ),
+            );
+            
+            // Add category filter if specified
+            if (!empty($category) && $category > 0) {
+                $args_without_views['cat'] = $category;
+            }
+            
+            // Exclude posts that already have views
+            if (!empty($post_ids_with_views)) {
+                $args_without_views['post__not_in'] = $post_ids_with_views;
+            }
+            
+            $query_without_views = new WP_Query($args_without_views);
+            
+            if ($query_without_views->have_posts()) {
+                while ($query_without_views->have_posts()) {
+                    $query_without_views->the_post();
+                    $post_id = get_the_ID();
+                    
+                    $thumbnail_id = get_post_thumbnail_id($post_id);
+                    $thumbnail_url = '';
+                    if ($thumbnail_id) {
+                        $thumbnail_url = wp_get_attachment_image_url($thumbnail_id, 'medium');
+                    }
+                    
+                    $posts_without_views[] = array(
+                        'id' => $post_id,
+                        'title' => get_the_title(),
+                        'excerpt' => get_the_excerpt(),
+                        'date' => get_the_date('Y-m-d'),
+                        'url' => get_permalink(),
+                        'views' => 0,
+                        'thumbnail' => $thumbnail_url,
+                    );
+                }
+                wp_reset_postdata();
+            }
+        }
+        
+        // Combine both arrays
+        $posts = array_merge($posts_with_views, $posts_without_views);
+        
+        return new WP_REST_Response(array(
+            'success' => true,
+            'data' => $posts,
+            'total' => count($posts),
+            'limit' => $limit,
+            'days' => $days,
+            'category' => $category,
+        ), 200);
     }
 
 

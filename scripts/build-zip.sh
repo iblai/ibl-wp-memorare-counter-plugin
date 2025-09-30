@@ -6,7 +6,7 @@
 set -e
 
 PLUGIN_NAME="ibl-wp-memorare-counter"
-PLUGIN_VERSION="0.4"
+PLUGIN_VERSION="1.0-beta"
 ZIP_NAME="${PLUGIN_NAME}-v${PLUGIN_VERSION}.zip"
 
 # Get script directory and project root
