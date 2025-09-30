@@ -1,12 +1,15 @@
 # IBLmemorare Counter
 
-**Version:** 1.2  
-**Author:** Your Name  
-**Description:** Post visit counter with strict security measures for WordPress.
+**Version:** 0.4 (Prerelease - Testing Phase)  
+**Author:** ibl.ai  
+**Description:** Post visit counter with strict security measures for WordPress. Fully compatible with WordPress Multisite.
+
+> ⚠️ **PRERELEASE NOTICE**: This plugin is currently in testing phase. While it's functional, it's still being refined and may have minor issues. Use with caution in production environments.
 
 ## Features
 
 - Counts visits for each post.
+- **Full WordPress Multisite compatibility** - Works seamlessly across multiple sites.
 - REST API endpoint with nonce verification for secure counting.
 - Bot detection to prevent fake views.
 - Rate limiting by IP to prevent multiple counts in a short period.
@@ -15,12 +18,55 @@
 - Shortcode `[iblmemorare_counter]` to display views in the frontend.
 - Automatic append of views at the end of post content.
 - Fully translatable with `.pot` file.
+- **Multisite-specific features:**
+  - Site-specific namespacing for API routes, cookies, and transients
+  - Automatic activation/deactivation for new/deleted sites
+  - Blog-specific salt generation for enhanced security
+
+## ⚠️ Prerelease Status
+
+**Current Status**: Testing Phase (v0.4)
+
+- ✅ **Core functionality working**: Visit counting, admin columns, REST API
+- ✅ **Multisite compatible**: Tested with WordPress Multisite
+- ⚠️ **Still in development**: May have minor bugs or issues
+- ⚠️ **Use with caution**: Not recommended for critical production sites yet
+- 🔄 **Active testing**: Feedback and bug reports welcome
+
+## Building the Plugin ZIP
+
+To create the plugin ZIP file for WordPress installation:
+
+### Using the Build Script
+
+1. **Navigate to the plugin directory**:
+   ```bash
+   cd /path/to/ibl-wp-memorare-counter-plugin
+   ```
+
+2. **Run the build script**:
+   ```bash
+   ./scripts/build-zip.sh
+   ```
+
+3. **The script will create**: `ibl-wp-memorare-counter-v0.4.zip`
+
+### Manual ZIP Creation
+
+If you prefer to create the ZIP manually:
+
+1. **Select these files**:
+   - `ibl_wp_memorare_counter_plugin.php`
+   - `README.md`
+   - `languages/` (entire folder)
+
+2. **Create ZIP** with these files (exclude `scripts/` folder)
 
 ## Installation
 
-1. Download the plugin ZIP file.
+1. Download the plugin ZIP file (created above).
 2. Go to your WordPress admin panel → Plugins → Add New → Upload Plugin.
-3. Upload `iblmemorare-counter.zip` and activate the plugin.
+3. Upload `ibl-wp-memorare-counter-v0.4.zip` and activate the plugin.
 4. (Optional) Place `[iblmemorare_counter]` shortcode anywhere in your post content to display views.
 
 ## Usage
@@ -42,17 +88,6 @@
 - Cookie mechanism to prevent repeated counts.
 - Escaping all output for admin and frontend display.
 
-## Changelog
-
-### 1.2
-- Updated all text strings to English.
-- Enhanced security measures.
-
-### 1.1
-- Initial secure version with REST API tracking, cookie and rate-limit protections.
-
-### 1.0
-- Basic post view counter with admin column and shortcode.
 
 ## License
 

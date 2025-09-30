@@ -2,8 +2,8 @@
 /**
  * Plugin Name: IBL WP Memorare Counter
  * Description: Post visit counter with strict security measures.
- * Version: 1.2
- * Author: Your Name
+ * Version: 0.4
+ * Author: ibl.ai
  * Text Domain: ibl-wp-memorare-counter
  */
 
@@ -15,7 +15,6 @@ final class IBL_WP_Memorare_Counter {
     private static $instance = null;
     private $meta_key = '_iblmemorare_views';
     private $cookie_prefix = 'iblmemorare_viewed_';
-    private $cookie_hours = 12; // Cookie valid for 12 hours
 
     private function __construct() {
         add_action('init', array($this, 'init'));
@@ -40,7 +39,54 @@ final class IBL_WP_Memorare_Counter {
         add_action('manage_post_posts_custom_column', array($this, 'render_views_column'), 10, 2);
 
         add_shortcode('iblmemorare_counter', array($this, 'shortcode_views'));
-        add_filter('the_content', array($this, 'maybe_append_views'));
+    }
+    
+    public function enqueue_scripts() {
+        if (!is_singular('post')) return;
+        
+        $api_url = rest_url('iblmemorare/v1/track');
+        
+        wp_enqueue_script('jquery');
+        wp_add_inline_script('jquery', sprintf('
+            jQuery(document).ready(function($) {
+                var postId = %d;
+                var apiUrl = "%s";
+                var cookieName = "%s";
+                var nonce = "%s";
+                
+                console.log("IBL Counter - Post ID:", postId);
+                console.log("IBL Counter - API URL:", apiUrl);
+                
+                // Check if already viewed
+                if (document.cookie.indexOf(cookieName) !== -1) {
+                    console.log("IBL Counter - Already viewed");
+                    return;
+                }
+                
+                // Track view
+                $.ajax({
+                    url: apiUrl,
+                    method: "POST",
+                    data: { post_id: postId },
+                    headers: {
+                        "X-WP-Nonce": nonce
+                    },
+                    success: function(response) {
+                        console.log("IBL Counter - Response:", response);
+                        if (response.success) {
+                            // Set cookie for 12 hours
+                            var expires = new Date();
+                            expires.setTime(expires.getTime() + (12 * 60 * 60 * 1000));
+                            document.cookie = cookieName + "=1; expires=" + expires.toUTCString() + "; path=/";
+                            console.log("IBL Counter - Counted:", response.views);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.log("IBL Counter - Error:", error);
+                    }
+                });
+            });
+        ', get_the_ID(), esc_js($api_url), esc_js($this->cookie_prefix . get_the_ID()), wp_create_nonce('wp_rest')));
     }
 
     public function activate() {}
@@ -57,73 +103,53 @@ final class IBL_WP_Memorare_Counter {
     public function rest_track_view($request) {
         $nonce = $request->get_header('X-WP-Nonce');
         if (empty($nonce) || !wp_verify_nonce($nonce, 'wp_rest')) {
-            return new WP_REST_Response(array('error' => __('Invalid nonce', 'ibl-wp-memorare-counter')), 401);
+            return new WP_REST_Response(array('error' => 'Invalid nonce'), 401);
         }
 
         $post_id = intval($request->get_param('post_id'));
         if ($post_id <= 0) {
-            return new WP_REST_Response(array('error' => __('Invalid post ID', 'ibl-wp-memorare-counter')), 400);
+            return new WP_REST_Response(array('error' => 'Invalid post ID'), 400);
         }
 
         if (!get_post_status($post_id)) {
-            return new WP_REST_Response(array('error' => __('Post does not exist', 'ibl-wp-memorare-counter')), 404);
+            return new WP_REST_Response(array('error' => 'Post does not exist'), 404);
         }
 
-        if ($this->is_bot()) {
-            return new WP_REST_Response(array('success' => false, 'reason' => 'bot_detected'), 200);
+        // Simple bot detection
+        if (isset($_SERVER['HTTP_USER_AGENT'])) {
+            $ua = strtolower($_SERVER['HTTP_USER_AGENT']);
+            if (strpos($ua, 'bot') !== false || strpos($ua, 'crawl') !== false) {
+                return new WP_REST_Response(array('success' => false, 'reason' => 'bot'), 200);
+            }
         }
 
-        $ip_hash = $this->get_ip_hash();
-        if (!$ip_hash) {
-            return new WP_REST_Response(array('error' => __('Could not determine IP', 'ibl-wp-memorare-counter')), 400);
-        }
-
-        $transient_key = sprintf('iblmem_rl_%s_%d', $ip_hash, $post_id);
+        // Simple rate limiting
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $transient_key = 'iblmem_rl_' . md5($ip . $post_id);
         if (get_transient($transient_key)) {
             return new WP_REST_Response(array('success' => false, 'reason' => 'rate_limited'), 200);
         }
 
+        // Check cookie
         $cookie_name = $this->cookie_prefix . $post_id;
         if (isset($_COOKIE[$cookie_name])) {
             return new WP_REST_Response(array('success' => false, 'reason' => 'cookie_present'), 200);
         }
 
+        // Count view
         $views = intval(get_post_meta($post_id, $this->meta_key, true));
         $views++;
         update_post_meta($post_id, $this->meta_key, $views);
 
+        // Set rate limit
         set_transient($transient_key, 1, 30 * MINUTE_IN_SECONDS);
 
         return new WP_REST_Response(array('success' => true, 'views' => $views), 200);
     }
 
-    private function is_bot() {
-        if (isset($_SERVER['HTTP_USER_AGENT'])) {
-            $ua = strtolower(wp_unslash($_SERVER['HTTP_USER_AGENT']));
-            $bot_signatures = array('bot', 'crawl', 'spider', 'slurp', 'facebookexternalhit', 'bingpreview', 'mediapartners-google');
-            foreach ($bot_signatures as $sig) {
-                if (strpos($ua, $sig) !== false) return true;
-            }
-        }
-        return false;
-    }
-
-    private function get_ip_hash() {
-        $ip = '';
-        if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-            $ip = $_SERVER['HTTP_CLIENT_IP'];
-        } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $parts = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-            $ip = trim(reset($parts));
-        } elseif (!empty($_SERVER['REMOTE_ADDR'])) {
-            $ip = $_SERVER['REMOTE_ADDR'];
-        }
-        if (empty($ip)) return false;
-        return substr(sha1($ip . wp_salt('auth')), 0, 16);
-    }
 
     public function add_views_column($columns) {
-        $columns['iblmemorare_views'] = __('Views', 'ibl-wp-memorare-counter');
+        $columns['iblmemorare_views'] = 'Count';
         return $columns;
     }
 
